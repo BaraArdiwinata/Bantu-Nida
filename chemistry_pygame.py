@@ -1,5 +1,6 @@
 import pygame
 import random
+import json
 
 # --- Inisialisasi Pygame ---
 pygame.init()
@@ -9,43 +10,44 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
+GREY = (200, 200, 200) # Warna baru untuk teks aturan
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 MAX_QUESTIONS = 5
+FEEDBACK_DURATION = 1500
 
 # --- Pengaturan Layar & Font ---
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Game Kimia Keren by Nida & Bara")
-font = pygame.font.Font(None, 40) # Menggunakan font default Pygame
+font = pygame.font.Font('assets//fonts/sugar_crush.otf', 45) # Ganti ukurannya juga boleh
+font_small = pygame.font.Font('assets/fonts/sugar_crush.otf', 32)
+
+# --- Load Suara ---
+try:
+    correct_sound = pygame.mixer.Sound('assets/sounds/correct.wav')
+    wrong_sound = pygame.mixer.Sound('assets/sounds/wrong.wav')
+except pygame.error as e:
+    print("Error: Gagal memuat file suara.", e)
+    # Buat jadi None kalo gagal, biar game ga crash
+    correct_sound = None
+    wrong_sound = None
+    
+# --- Load Gambar ---
+try:
+    background_image = pygame.image.load('assets/images/background.jpg').convert()
+    # Pastikan ukuran gambar pas dengan layar kita
+    background_image = pygame.transform.scale(background_image, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    tick_image = pygame.image.load('assets/images/tick.png').convert_alpha()
+    tick_image = pygame.transform.scale(tick_image, (100, 100))
+    cross_image = pygame.image.load('assets/images/cross.png').convert_alpha()
+    cross_image = pygame.transform.scale(cross_image, (100, 100))
+except pygame.error as e:
+    print("Error: Gagal memuat file gambar.", e)
+    background_image = None # Kalo gagal, backgroundnya nanti warna putih aja
 
 # --- Data Game ---
-compounds = {
-    "H2O": {"name": "air", "sifat": "Cairan tidak berwarna"},
-    "CO2": {"name": "karbon dioksida", "sifat": "Gas tidak berwarna"},
-    "NaCl": {"name": "natrium klorida", "sifat": "Dikenal sebagai garam dapur"},
-    "H2SO4": {"name": "asam sulfat", "sifat": "Cairan kental, sangat korosif"},
-    "HCl": {"name": "asam klorida", "sifat": "Cairan asam kuat"},
-    "NH3": {"name": "amonia", "sifat": "Gas dengan bau menyengat"},
-    "CH4": {"name": "metana", "sifat": "Gas tidak berwarna, bahan bakar utama gas alam"},
-    "C2H6": {"name": "etana", "sifat": "Gas tidak berwarna, digunakan dalam produksi etilena"},
-    "C6H12O6": {"name": "glukosa", "sifat": "Kristal putih, sumber energi utama tubuh"},
-    "CaCO3": {"name": "kalsium karbonat", "sifat": "Padatan putih, bahan utama kapur dan marmer"},
-    "C2H5OH": {"name": "etanol", "sifat": "Cairan berbau alkohol, digunakan dalam minuman beralkohol"},
-    "C3H8": {"name": "propana", "sifat": "Gas tidak berwarna, digunakan sebagai bahan bakar"},
-    "C4H10": {"name": "butana", "sifat": "Gas tidak berwarna, digunakan dalam gas LPG"},
-    "C6H6": {"name": "benzen", "sifat": "Cairan beracun, digunakan sebagai pelarut industri"},
-    "C2H4": {"name": "etilena", "sifat": "Gas tidak berwarna, digunakan dalam produksi plastik"},
-    "C3H6": {"name": "propena", "sifat": "Gas tidak berwarna, digunakan dalam industri kimia"},
-    "C2H2": {"name": "asetilena", "sifat": "Gas tidak berwarna, digunakan dalam las"},
-    "H2O2": {"name": "hidrogen peroksida", "sifat": "Cairan berwarna putih, digunakan sebagai antiseptik"},
-    "NaHCO3": {"name": "natrium bikarbonat", "sifat": "Biasa dikenal sebagai baking soda"},
-    "KCl": {"name": "kalium klorida", "sifat": "Kristal putih, digunakan dalam pupuk"},
-    "MgSO4": {"name": "magnesium sulfat", "sifat": "Biasa dikenal sebagai garam Epsom"},
-    "Ca(OH)2": {"name": "kalsium hidroksida", "sifat": "Cairan berwarna putih, dikenal sebagai kapur sirih"},
-    "Na2CO3": {"name": "natrium karbonat", "sifat": "Biasa dikenal sebagai soda kue"},
-    "C12H22O11": {"name": "sukrosa", "sifat": "Kristal putih, biasa dikenal sebagai gula"},
-    "C4H8O2": {"name": "asam asetat", "sifat": "Cairan berwarna tidak berwarna, dikenal sebagai cuka"},
-}
+with open('senyawa.json', 'r') as f:
+    compounds = json.load(f)
 
 # --- Variabel Game ---
 game_state = "start"
@@ -55,28 +57,29 @@ current_compound = None
 user_answer = ""
 score = 0
 total_questions = 0
-
-# --- VARIABEL BARU UNTUK FEEDBACK ---
 feedback_message = ""
 feedback_color = BLACK
 feedback_start_time = 0
-FEEDBACK_DURATION = 1500 # 1.5 detik dalam milidetik
+hint_message = "" # <<< VARIABEL BARU UNTUK HINT
 
 # --- Fungsi Bantuan ---
 def get_new_compound():
     formula = random.choice(list(compounds.keys()))
     return formula, compounds[formula]
 
-def display_message(text, color, y_offset):
-    text_surface = font.render(text, True, color)
+def display_message(text, color, y_offset, current_font=font): # Update fungsi biar bisa ganti font
+    text_surface = current_font.render(text, True, color)
     text_rect = text_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + y_offset))
     screen.blit(text_surface, text_rect)
 
+def draw_text(text, font, color, surface, x, y):
+    text_obj = font.render(text, True, color)
+    text_rect = text_obj.get_rect()
+    text_rect.topleft = (x, y)
+    surface.blit(text_obj, text_rect)
+
 # =================================================================
 # --- GAME LOOP UTAMA ---
-# =================================================================
-# =================================================================
-# --- GAME LOOP UTAMA (VERSI FINAL V1) ---
 # =================================================================
 while running:
     # 1. Event Handling
@@ -92,17 +95,24 @@ while running:
 
             if game_state == "playing":
                 if event.key == pygame.K_RETURN:
-                    correct_answer = current_compound[1]['name'].lower()
-                    if user_answer.lower().strip() == correct_answer:
-                        score += 1
-                        feedback_message = "BENAR!"
-                        feedback_color = GREEN
+                    # --- LOGIKA HINT BARU ---
+                    if user_answer.lower().strip() == 'hint':
+                        hint_message = current_compound[1]['sifat']
+                        user_answer = "" # Kosongkan jawaban setelah minta hint
                     else:
-                        feedback_message = f"SALAH! Jawaban: {current_compound[1]['name']}"
-                        feedback_color = RED
-                    game_state = "feedback"
-                    feedback_start_time = pygame.time.get_ticks()
-                    total_questions += 1
+                        correct_answer = current_compound[1]['name'].lower()
+                        if user_answer.lower().strip() == correct_answer:
+                            score += 1
+                            feedback_message = "BENAR!"
+                            feedback_color = GREEN
+                            if correct_sound: correct_sound.play()
+                        else:
+                            feedback_message = f"SALAH! Jawaban: {current_compound[1]['name']}"
+                            feedback_color = RED
+                            if wrong_sound: wrong_sound.play()
+                        game_state = "feedback"
+                        feedback_start_time = pygame.time.get_ticks()
+                        total_questions += 1
                 elif event.key == pygame.K_BACKSPACE:
                     user_answer = user_answer[:-1]
                 else:
@@ -114,52 +124,86 @@ while running:
                 elif event.key == pygame.K_n:
                     game_state = previous_game_state
             
-            # --- LOGIKA INPUT BARU UNTUK STATE RESULT ---
             elif game_state == "result":
                 if event.key == pygame.K_y:
-                    # Reset game untuk main lagi
                     game_state = "playing"
                     score = 0
                     total_questions = 0
                     user_answer = ""
+                    hint_message = "" # Reset hint
                     current_compound = get_new_compound()
                 elif event.key == pygame.K_n:
                     running = False
 
     # 2. Drawing
     if game_state == "start":
-        screen.fill(WHITE)
-        display_message("Selamat Datang di Game Kimia!", BLACK, -50)
-        display_message("Tekan Spasi untuk Memulai", BLACK, 50)
+        if background_image:
+            screen.blit(background_image, (0, 0))
+        else:
+            screen.fill(WHITE)
+        display_message("Selamat Datang di Game Kimia!", BLACK, -150)
+        display_message("Tekan Spasi untuk Memulai", BLACK, 180)
+        
+        # --- TAMPILAN ATURAN MAIN BARU ---
+        display_message("Cara Bermain:", GREY, -80, font_small)
+        display_message("1. Tebak nama senyawa dari rumus kimia yang diberikan.", GREY, -50, font_small)
+        display_message("2. Ketik 'hint' untuk mendapatkan petunjuk.", GREY, -20, font_small)
+        display_message("3. Tekan 'ESC' kapan saja untuk keluar.", GREY, 10, font_small)
+
         keys = pygame.key.get_pressed()
         if keys[pygame.K_SPACE]:
             game_state = "playing"
             current_compound = get_new_compound()
             user_answer = ""
+            hint_message = "" # Reset hint
             score = 0
             total_questions = 0
 
     elif game_state == "playing":
-        screen.fill(WHITE)
+        if background_image:
+            screen.blit(background_image, (0, 0))
+        else:
+            screen.fill(WHITE)
+        pygame.draw.rect(screen, (0, 0, 0, 150), [0, 0, SCREEN_WIDTH, 60]) 
+        draw_text(f"Skor: {score}", font_small, WHITE, screen, 20, 15)
+        draw_text(f"Soal: {total_questions + 1}/{MAX_QUESTIONS}", font_small, WHITE, screen, SCREEN_WIDTH - 150, 15)
         if current_compound:
             formula = current_compound[0]
             display_message(f"Rumus Kimia: {formula}", BLACK, -150)
             display_message("Apa nama senyawa ini?", BLACK, -100)
+            
+            # --- TAMPILAN HINT BARU ---
+            if hint_message:
+                display_message(f"Hint: {hint_message}", GREY, -50, font_small)
+            
             pygame.draw.rect(screen, BLACK, (100, SCREEN_HEIGHT / 2, 600, 50), 2)
             answer_surface = font.render(user_answer, True, BLACK)
             screen.blit(answer_surface, (110, SCREEN_HEIGHT / 2 + 10))
 
     elif game_state == "feedback":
-        screen.fill(WHITE)
-        if current_compound:
-            formula = current_compound[0]
-            display_message(f"Rumus Kimia: {formula}", BLACK, -150)
-            display_message("Apa nama senyawa ini?", BLACK, -100)
-            pygame.draw.rect(screen, BLACK, (100, SCREEN_HEIGHT / 2, 600, 50), 2)
-            answer_surface = font.render(user_answer, True, BLACK)
-            screen.blit(answer_surface, (110, SCREEN_HEIGHT / 2 + 10))
-            display_message(feedback_message, feedback_color, 150)
+        if background_image:
+            screen.blit(background_image, (0, 0))
+        else:
+            screen.fill(WHITE)
+        pygame.draw.rect(screen, (0, 0, 0, 150), [0, 0, SCREEN_WIDTH, 60])
+        draw_text(f"Skor: {score}", font_small, WHITE, screen, 20, 15)
+        draw_text(f"Soal: {total_questions}/{MAX_QUESTIONS}", font_small, WHITE, screen, SCREEN_WIDTH - 150, 15) # Di sini pakenya total_questions, bukan +1
+        # Tentukan gambar mana yang mau ditampilkan berdasarkan warna feedback
+        if feedback_color == GREEN:
+            if tick_image:
+                # Tampilkan gambar di tengah layar
+                rect = tick_image.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
+                screen.blit(tick_image, rect)
+        else: # Berarti warnanya MERAH
+            if cross_image:
+                # Tampilkan gambar di tengah layar
+                rect = cross_image.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
+                screen.blit(cross_image, rect)
         
+        # Tampilkan juga teks feedback-nya di bawah gambar
+        display_message(feedback_message, feedback_color, 150)
+
+        # Cek timer untuk lanjut ke soal berikutnya
         current_time = pygame.time.get_ticks()
         if current_time - feedback_start_time > FEEDBACK_DURATION:
             if total_questions >= MAX_QUESTIONS:
@@ -168,6 +212,7 @@ while running:
                 game_state = "playing"
                 current_compound = get_new_compound()
                 user_answer = ""
+                hint_message = ""
 
     elif game_state == "confirm_quit":
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -176,9 +221,11 @@ while running:
         display_message("Yakin mau keluar?", WHITE, -20)
         display_message("Tekan (Y) untuk Ya / (N) untuk Tidak", WHITE, 20)
         
-    # --- TAMPILAN BARU UNTUK STATE RESULT ---
     elif game_state == "result":
-        screen.fill(WHITE)
+        if background_image:
+            screen.blit(background_image, (0, 0))
+        else:
+            screen.fill(WHITE)
         display_message("GAME SELESAI!", BLACK, -100)
         display_message(f"Skor Akhir: {score} / {MAX_QUESTIONS}", BLACK, -20)
         display_message("Main Lagi?", BLACK, 50)
