@@ -18,7 +18,7 @@ FEEDBACK_DURATION = 1500
 
 # --- Pengaturan Layar & Font ---
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Game Kimia Keren by Nida & Bara")
+pygame.display.set_caption("Game Kimia Keren!")
 font = pygame.font.Font('assets//fonts/sugar_crush.otf', 45) # Ganti ukurannya juga boleh
 font_small = pygame.font.Font('assets/fonts/sugar_crush.otf', 32)
 
